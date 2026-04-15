@@ -1,0 +1,6 @@
+{
+  "name": "HT26 Interactive Course Planner",
+  "description": "A 3-month academic calendar visualizer for uploading course schedules, detecting conflicts, and filtering by class type.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

@@ -1,0 +1,816 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jennifer Watson | Schedule Calendar</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel for parsing JSX/Typescript in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        oxford: {
+                            blue: '#002147', // Oxford Blue
+                            light: '#e3e8ee',
+                            accent: '#003c7d'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+      html { height: 100%; }
+      body {
+        font-family: 'Inter', sans-serif;
+        height: 100%;
+        overflow: hidden;
+        background-color: #f8fafc;
+      }
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f1f1; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-full flex flex-col">
+    <div id="root" class="h-full flex flex-col"></div>
+
+    <script type="text/babel" data-presets="env,react,typescript">
+        
+        // --- POLYFILLS ---
+        const process = { env: { API_KEY: '' } };
+
+        // --- TYPES ---
+        enum EventType {
+            LECTURE = 'Lecture',
+            PRACTICAL = 'Practical',
+            CLASS = 'Class',
+            OTHER = 'Other'
+        }
+
+        // --- DATE UTILS ---
+        const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+        const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+
+        const getMonthData = (year, month) => {
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = getDaysInMonth(year, month);
+            const days = [];
+            const prevMonthDays = getDaysInMonth(year, month - 1);
+            
+            for (let i = firstDay - 1; i >= 0; i--) {
+                days.push({ day: prevMonthDays - i, month: month - 1, year: year, isCurrentMonth: false });
+            }
+            for (let i = 1; i <= daysInMonth; i++) {
+                days.push({ day: i, month: month, year: year, isCurrentMonth: true });
+            }
+            const remaining = 42 - days.length;
+            for (let i = 1; i <= remaining; i++) {
+                days.push({ day: i, month: month + 1, year: year, isCurrentMonth: false });
+            }
+            return days;
+        };
+
+        const isSameDay = (d1, d2) => {
+            return d1.getFullYear() === d2.getFullYear() &&
+                   d1.getMonth() === d2.getMonth() &&
+                   d1.getDate() === d2.getDate();
+        };
+
+        const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const formatDateFull = (date) => date.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+        // --- PARSERS ---
+        
+        // ICS Parser
+        const parseICSDate = (dateStr) => {
+            if (!dateStr) return null;
+            const match = /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?/.exec(dateStr);
+            if (match) {
+                const [, year, month, day, hour, min, sec, utc] = match;
+                if (utc) {
+                    return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(min), parseInt(sec)));
+                } else {
+                    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(min), parseInt(sec));
+                }
+            }
+            const matchDateOnly = /^(\d{4})(\d{2})(\d{2})$/.exec(dateStr);
+            if (matchDateOnly) {
+                return new Date(parseInt(matchDateOnly[1]), parseInt(matchDateOnly[2]) - 1, parseInt(matchDateOnly[3]));
+            }
+            return null;
+        };
+
+        const determineEventType = (summary, description = '') => {
+            const text = (summary + ' ' + description).toLowerCase();
+            if (text.includes('lecture') || text.includes('lec')) return EventType.LECTURE;
+            if (text.includes('practical') || text.includes('lab') || text.includes('workshop')) return EventType.PRACTICAL;
+            if (text.includes('tutorial') || text.includes('seminar') || text.includes('class')) return EventType.CLASS;
+            return EventType.OTHER;
+        };
+
+        const parseICS = (content, fileName, forcedType) => {
+            const events = [];
+            const lines = content.split(/\r\n|\n|\r/);
+            let inEvent = false;
+            let currentEvent = {};
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.startsWith('BEGIN:VEVENT')) {
+                    inEvent = true;
+                    currentEvent = { sourceFile: fileName, id: Math.random().toString(36).substr(2, 9) };
+                } else if (line.startsWith('END:VEVENT')) {
+                    inEvent = false;
+                    if (currentEvent.start && currentEvent.end && currentEvent.title) {
+                        currentEvent.type = forcedType || determineEventType(currentEvent.title, currentEvent.description);
+                        events.push(currentEvent);
+                    }
+                    currentEvent = {};
+                } else if (inEvent) {
+                    if (line.startsWith('SUMMARY:')) currentEvent.title = line.substring(8);
+                    else if (line.startsWith('DTSTART')) currentEvent.start = parseICSDate(line.split(':').pop());
+                    else if (line.startsWith('DTEND')) currentEvent.end = parseICSDate(line.split(':').pop());
+                    else if (line.startsWith('DESCRIPTION:')) currentEvent.description = line.substring(12);
+                    else if (line.startsWith('LOCATION:')) currentEvent.location = line.substring(9);
+                }
+            }
+            return events;
+        };
+
+        // CSV Parser
+        const TERM_START_DATE = new Date(2025, 9, 13); 
+        const DAY_MAP = { 'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6 };
+
+        const parseTimeStr = (timeStr) => {
+            const match = timeStr.trim().match(/(\d{1,2})(am|pm)/i);
+            if (!match) return 0;
+            let hour = parseInt(match[1]);
+            const meridiem = match[2].toLowerCase();
+            if (meridiem === 'pm' && hour !== 12) hour += 12;
+            if (meridiem === 'am' && hour === 12) hour = 0;
+            return hour;
+        };
+
+        const splitCSVLine = (line) => {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') inQuotes = !inQuotes;
+                else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+                else current += char;
+            }
+            result.push(current.trim());
+            return result;
+        };
+
+        const parseCSV = (content, fileName, eventType = EventType.PRACTICAL) => {
+            const events = [];
+            const physicalLines = content.split(/\r\n|\n|\r/).filter(l => l.trim());
+            const logicalRecords = [];
+            let recordBuffer = "";
+
+            if (physicalLines.length > 1) {
+                physicalLines.slice(1).forEach(line => {
+                    const trimmed = line.trim();
+                    const isNewRecord = /^"?(?:Lab-based\s+"?)?(?:Class Group|Practical Group)/i.test(trimmed);
+                    if (isNewRecord) {
+                        if (recordBuffer) logicalRecords.push(recordBuffer);
+                        recordBuffer = line;
+                    } else {
+                        recordBuffer += "\n" + line;
+                    }
+                });
+                if (recordBuffer) logicalRecords.push(recordBuffer);
+            }
+
+            logicalRecords.forEach(line => {
+                const cols = splitCSVLine(line);
+                if (cols.length < 2) return;
+
+                const descriptionRaw = cols[0].replace(/^"|"$/g, '').trim();
+                const weeksRaw = cols[1].replace(/^"|"$/g, '');
+                const courseCode = cols.length > 2 ? cols[2].replace(/^"|"$/g, '').trim() : '';
+                
+                const descMatch = descriptionRaw.match(/^([\s\S]*?)\s*\(([\s\S]*?),?\s*([A-Za-z]+)\s+(\d{1,2}(?:am|pm))\s*-\s*(\d{1,2}(?:am|pm))\)([\s\S]*)$/i);
+                if (!descMatch) return;
+
+                const [, groupName, location, dayStrRaw, startTimeStr, endTimeStr] = descMatch;
+                const weekNums = [];
+                const cleanWeeks = weeksRaw.replace(/^Weeks?\s+/i, '');
+                cleanWeeks.split(',').forEach(w => {
+                    if (w.includes('-')) {
+                        const [start, end] = w.split('-').map(n => parseInt(n));
+                        for (let i = start; i <= end; i++) weekNums.push(i);
+                    } else {
+                        const n = parseInt(w);
+                        if (!isNaN(n)) weekNums.push(n);
+                    }
+                });
+
+                const cleanDayStr = dayStrRaw.substring(0, 3);
+                const dayOffset = DAY_MAP[cleanDayStr.charAt(0).toUpperCase() + cleanDayStr.slice(1).toLowerCase()];
+                if (dayOffset === undefined) return;
+                const startHour = parseTimeStr(startTimeStr);
+                const endHour = parseTimeStr(endTimeStr);
+                const distinctGroupName = courseCode ? `${courseCode} - ${groupName}` : groupName;
+                const staticDescription = `${descriptionRaw}\n${weeksRaw}`;
+
+                weekNums.forEach(weekNum => {
+                    const weekStartDate = new Date(TERM_START_DATE);
+                    weekStartDate.setDate(TERM_START_DATE.getDate() + (weekNum - 1) * 7);
+                    const eventDate = new Date(weekStartDate);
+                    eventDate.setDate(weekStartDate.getDate() + dayOffset);
+                    
+                    const start = new Date(eventDate); start.setHours(startHour, 0, 0, 0);
+                    const end = new Date(eventDate); end.setHours(endHour, 0, 0, 0);
+
+                    events.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        title: distinctGroupName,
+                        location: location,
+                        start: start,
+                        end: end,
+                        description: staticDescription,
+                        type: eventType,
+                        sourceFile: distinctGroupName,
+                        hasConflict: false
+                    });
+                });
+            });
+            return events;
+        };
+
+        const parseCohortCSV = (content) => {
+            const rules = [];
+            const lines = content.split(/\r\n|\n|\r/);
+            const startIndex = lines[0]?.toLowerCase().includes('course') ? 1 : 0;
+            for (let i = startIndex; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const cols = splitCSVLine(lines[i]);
+                if (cols.length < 5) continue;
+                const courseName = cols[0].replace(/^"|"$/g, '');
+                const url = cols[1].replace(/^"|"$/g, '');
+                const year = cols[3] ? cols[3].replace(/^"|"$/g, '').trim() : '';
+                const degree = cols[4] ? cols[4].replace(/^"|"$/g, '').trim() : '';
+                const codeMatch = url.match(/name=([^&]+)/);
+                const courseCode = codeMatch ? codeMatch[1] : '';
+                if (degree) rules.push({ courseName, courseCode, degree, year });
+            }
+            return rules;
+        };
+
+        const detectConflicts = (events) => {
+            const sorted = [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
+            const result = sorted.map(e => ({ ...e, hasConflict: false }));
+            for (let i = 0; i < result.length; i++) {
+                for (let j = i + 1; j < result.length; j++) {
+                    const e1 = result[i];
+                    const e2 = result[j];
+                    if (e1.end > e2.start && e1.start < e2.end) {
+                        result[i].hasConflict = true;
+                        result[j].hasConflict = true;
+                    }
+                }
+            }
+            return result;
+        };
+
+        // --- SAMPLE DATA ---
+        const SAMPLE_COHORT_RULES = []; 
+        const SAMPLE_EVENTS = []; 
+
+        // --- COMPONENTS ---
+
+        const Button = ({ children, variant = 'primary', size = 'md', className = '', ...props }) => {
+            const base = "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1";
+            const v = {
+                primary: "bg-oxford-blue text-white hover:bg-oxford-accent focus:ring-oxford-blue",
+                secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-oxford-blue",
+                danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
+                ghost: "text-slate-600 hover:bg-slate-100 focus:ring-slate-400"
+            };
+            const s = { sm: "px-3 py-1.5 text-xs", md: "px-4 py-2 text-sm", lg: "px-6 py-3 text-base" };
+            return <button className={`${base} ${v[variant]} ${s[size]} ${className}`} {...props}>{children}</button>;
+        };
+
+        const AgendaView = ({ events, onEventClick }) => {
+            const sortedEvents = [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
+            const grouped = {};
+            sortedEvents.forEach(e => {
+                const k = e.start.toDateString();
+                if (!grouped[k]) grouped[k] = [];
+                grouped[k].push(e);
+            });
+
+            if (sortedEvents.length === 0) {
+                return <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">No events to display</div>;
+            }
+
+            const typeColors = {
+                [EventType.LECTURE]: 'bg-blue-100 text-blue-800 border-blue-200',
+                [EventType.PRACTICAL]: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                [EventType.CLASS]: 'bg-orange-100 text-orange-800 border-orange-200',
+                [EventType.OTHER]: 'bg-slate-100 text-slate-800 border-slate-200',
+            };
+
+            return (
+                <div className="h-full overflow-y-auto p-4 space-y-6 bg-slate-50 pb-24 md:pb-4">
+                    {Object.entries(grouped).map(([dateStr, dayEvents]) => (
+                        <div key={dateStr} className="space-y-2">
+                            <h3 className="text-sm font-bold text-slate-500 uppercase sticky top-0 bg-slate-50/95 backdrop-blur-sm py-3 z-10 border-b border-slate-100">
+                                {new Date(dateStr).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </h3>
+                            <div className="space-y-2">
+                                {dayEvents.map(event => (
+                                    <div key={event.id} onClick={() => onEventClick(event)} className={`bg-white p-3 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all flex gap-3 items-start ${event.hasConflict ? 'border-red-300 ring-1 ring-red-100' : 'border-slate-200'}`}>
+                                        <div className="flex flex-col items-center min-w-[60px] border-r border-slate-100 pr-3">
+                                            <span className="text-xs font-bold text-slate-700">{formatTime(event.start)}</span>
+                                            <span className="text-[10px] text-slate-400">{formatTime(event.end)}</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${typeColors[event.type]}`}>{event.type}</span>
+                                                {event.hasConflict && <span className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">Conflict</span>}
+                                            </div>
+                                            <h4 className="text-sm font-bold text-slate-900 leading-tight mb-0.5">{event.title}</h4>
+                                            {event.location && <div className="text-xs text-slate-500">{event.location}</div>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const CalendarMonth = ({ year, month, events, onDayClick, selectedDate }) => {
+            const days = getMonthData(year, month);
+            const displayDate = new Date(year, month);
+            const monthLabel = `${MONTH_NAMES[displayDate.getMonth()]} ${displayDate.getFullYear()}`;
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div className="p-4 bg-slate-50 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-800">{monthLabel}</h3></div>
+                    <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+                        {DAYS_OF_WEEK.map(d => <div key={d} className="py-2 text-center text-xs font-semibold text-slate-500 uppercase">{d}</div>)}
+                    </div>
+                    <div className="grid grid-cols-7 flex-1 auto-rows-fr">
+                        {days.map((d, idx) => {
+                            const current = new Date(d.year, d.month, d.day);
+                            const dayEvents = events.filter(e => isSameDay(e.start, current));
+                            const hasConflict = dayEvents.some(e => e.hasConflict);
+                            const isSelected = selectedDate && isSameDay(current, selectedDate);
+                            
+                            return (
+                                <div key={idx} onClick={() => onDayClick(current, dayEvents)} className={`min-h-[80px] border-b border-r border-slate-50 p-2 cursor-pointer ${!d.isCurrentMonth ? 'bg-slate-50/50 text-slate-400' : 'bg-white text-slate-700'} ${isSelected ? 'ring-2 ring-inset ring-oxford-blue z-10' : 'hover:bg-slate-50'} ${hasConflict ? 'bg-red-50/50' : ''}`}>
+                                    <div className="flex justify-between items-start">
+                                        <span className={`text-sm font-medium h-7 w-7 flex items-center justify-center rounded-full ${isSelected ? 'bg-oxford-blue text-white' : ''}`}>{d.day}</span>
+                                        {hasConflict && <span className="text-red-500 text-xs">⚠</span>}
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-1 content-start">
+                                        {dayEvents.slice(0, 5).map(ev => (
+                                            <span key={ev.id} className={`h-2 w-2 rounded-full ring-1 ring-white ${ev.hasConflict ? 'bg-red-500' : ev.type === EventType.LECTURE ? 'bg-blue-500' : ev.type === EventType.PRACTICAL ? 'bg-emerald-500' : ev.type === EventType.CLASS ? 'bg-orange-500' : 'bg-slate-400'}`} />
+                                        ))}
+                                        {dayEvents.length > 5 && <span className="text-[10px] text-slate-400 leading-none self-center">+</span>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        const EventModal = ({ date, events, isOpen, onClose }) => {
+            if (!isOpen || !date) return null;
+            const conflicts = events.filter(e => e.hasConflict);
+            const regular = events.filter(e => !e.hasConflict);
+            
+            const Card = ({ event }) => (
+                <div className={`p-4 rounded-lg border ${event.hasConflict ? 'border-red-300 bg-white ring-2 ring-red-100' : 'bg-white border-slate-200 shadow-sm'}`}>
+                    <div className="flex justify-between items-start mb-2">
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-800">{event.type}</span>
+                        <span className="text-xs font-mono text-slate-500">{formatTime(event.start)} - {formatTime(event.end)}</span>
+                    </div>
+                    <h4 className="font-bold text-slate-900 leading-tight mb-1">{event.title}</h4>
+                    {event.location && <p className="text-sm text-slate-600">{event.location}</p>}
+                </div>
+            );
+
+            return (
+                <div className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white shadow-2xl transform transition-transform z-50 flex flex-col border-l border-slate-200">
+                    <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                        <div><h2 className="text-xl font-bold text-slate-800">{formatDateFull(date)}</h2><p className="text-sm text-slate-500">{events.length} Events</p></div>
+                        <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        {events.length === 0 && <p className="text-center text-slate-400">No events.</p>}
+                        {conflicts.length > 0 && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                <h3 className="text-red-800 font-semibold mb-3">Conflicts</h3>
+                                <div className="space-y-3">{conflicts.map(e => <Card key={e.id} event={e} />)}</div>
+                            </div>
+                        )}
+                        {regular.length > 0 && (
+                            <div><h3 className="text-slate-700 font-semibold mb-3">Schedule</h3><div className="space-y-3">{regular.map(e => <Card key={e.id} event={e} />)}</div></div>
+                        )}
+                    </div>
+                    <div className="p-4 border-t border-slate-200 bg-slate-50"><Button onClick={onClose} variant="secondary" className="w-full">Close</Button></div>
+                </div>
+            );
+        };
+
+        const SummaryPane = ({ visibleSources, sourceTypes }) => {
+            const grouped = React.useMemo(() => {
+                const g = {};
+                visibleSources.forEach(src => {
+                    let name = src, activity = 'Lecture';
+                    const type = sourceTypes[src] || EventType.OTHER;
+                    if (src.includes(' - ')) {
+                        const parts = src.split(' - ');
+                        name = parts[0]; activity = parts.slice(1).join(' - ');
+                    } else {
+                        activity = type === EventType.LECTURE ? 'Lectures' : type === EventType.PRACTICAL ? 'Practical' : type === EventType.CLASS ? 'Class' : 'Event';
+                    }
+                    if (!g[name]) g[name] = { name, activities: [] };
+                    g[name].activities.push({ label: activity, type });
+                });
+                return Object.values(g).sort((a, b) => a.name.localeCompare(b.name));
+            }, [visibleSources, sourceTypes]);
+
+            return (
+                <div className="flex flex-col h-full bg-white">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 flex-none"><h2 className="text-xs font-bold text-slate-500 uppercase">Selection Summary</h2></div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        {grouped.length === 0 ? <p className="text-sm text-slate-400 italic text-center">No courses selected.</p> : grouped.map((c, i) => (
+                            <div key={i} className="group">
+                                <h3 className="text-sm font-bold text-slate-800 mb-2">{c.name}</h3>
+                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-100">
+                                    {c.activities.map((a, ai) => (
+                                        <div key={ai} className={`text-xs px-2 py-1 rounded border inline-block w-full ${a.type === EventType.LECTURE ? 'text-blue-600 bg-blue-50' : a.type === EventType.PRACTICAL ? 'text-emerald-600 bg-emerald-50' : 'text-slate-600 bg-slate-50'}`}>
+                                            {a.label}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- APP COMPONENT ---
+        const App = () => {
+            const [currentDate, setCurrentDate] = React.useState(new Date());
+            const [events, setEvents] = React.useState(SAMPLE_EVENTS);
+            const [cohortRules, setCohortRules] = React.useState(SAMPLE_COHORT_RULES);
+            const [selectedDay, setSelectedDay] = React.useState(null);
+            const [isAdminMode, setIsAdminMode] = React.useState(false);
+            const [importType, setImportType] = React.useState(EventType.LECTURE);
+            const [calendarVisibility, setCalendarVisibility] = React.useState({});
+            const [mobileTab, setMobileTab] = React.useState('schedule');
+            const [selectedDegree, setSelectedDegree] = React.useState('');
+            const [selectedYear, setSelectedYear] = React.useState('');
+            const [isLoading, setIsLoading] = React.useState(false);
+            const [showExportModal, setShowExportModal] = React.useState(false);
+            const [exportCode, setExportCode] = React.useState('');
+            const [expandedCategories, setExpandedCategories] = React.useState({ [EventType.LECTURE]: false, [EventType.PRACTICAL]: false, [EventType.CLASS]: false, [EventType.OTHER]: false });
+
+            // Data Transformation
+            const processedEvents = React.useMemo(() => {
+                if (cohortRules.length === 0) return events;
+                const codeToName = new Map();
+                cohortRules.forEach(r => { if (r.courseCode && r.courseName) codeToName.set(r.courseCode.toLowerCase().trim(), r.courseName); });
+                
+                return events.map(e => {
+                    if (e.type === EventType.PRACTICAL || e.type === EventType.CLASS) {
+                        const parts = e.sourceFile.split(' - ');
+                        if (parts.length >= 2) {
+                            const code = parts[0];
+                            const fullName = codeToName.get(code.toLowerCase());
+                            if (fullName) {
+                                const newName = `${fullName} - ${parts.slice(1).join(' - ')}`;
+                                return { ...e, sourceFile: newName, title: newName };
+                            }
+                        }
+                    }
+                    return e;
+                });
+            }, [events, cohortRules]);
+
+            // Derived State
+            const uniqueSources = React.useMemo(() => Array.from(new Set(processedEvents.map(e => e.sourceFile))).sort(), [processedEvents]);
+            
+            const sourceTypes = React.useMemo(() => {
+                const m = {}; processedEvents.forEach(e => { if(!m[e.sourceFile]) m[e.sourceFile] = e.type; }); return m;
+            }, [processedEvents]);
+
+            const groupedSources = React.useMemo(() => {
+                const g = {}; Object.values(EventType).forEach(t => g[t] = []);
+                uniqueSources.forEach(src => { const t = sourceTypes[src] || EventType.OTHER; g[t]?.push(src); });
+                return g;
+            }, [uniqueSources, sourceTypes]);
+
+            React.useEffect(() => {
+                setCalendarVisibility(prev => {
+                    const next = { ...prev }; let change = false;
+                    uniqueSources.forEach(src => { if (next[src] === undefined) { next[src] = isAdminMode; change = true; } });
+                    return change ? next : prev;
+                });
+            }, [uniqueSources, isAdminMode]);
+
+            const { degrees, years } = React.useMemo(() => {
+                const d = new Set(), y = new Set();
+                cohortRules.forEach(r => { if(r.degree) d.add(r.degree); if(r.year) y.add(r.year); });
+                return { degrees: Array.from(d).sort(), years: Array.from(y).filter(Boolean).sort() };
+            }, [cohortRules]);
+
+            const isYearRequired = React.useMemo(() => {
+                if (!selectedDegree) return true;
+                return cohortRules.some(r => r.degree === selectedDegree && r.year && r.year.trim() !== '');
+            }, [cohortRules, selectedDegree]);
+
+            const allowedCourseCodes = React.useMemo(() => {
+                if (!selectedDegree) return null;
+                if (isYearRequired && !selectedYear) return null;
+                const allowed = new Set();
+                cohortRules.forEach(r => {
+                    if (r.degree === selectedDegree) {
+                        if (!isYearRequired || r.year === selectedYear) {
+                            if (r.courseCode) allowed.add(r.courseCode.toLowerCase());
+                            if (r.courseName) allowed.add(r.courseName.toLowerCase());
+                        }
+                    }
+                });
+                return allowed;
+            }, [cohortRules, selectedDegree, selectedYear, isYearRequired]);
+
+            const isSourceAllowed = (source, type) => {
+                if (!allowedCourseCodes) return true;
+                const norm = source.toLowerCase();
+                for (const code of allowedCourseCodes) if (norm.includes(code)) return true;
+                return false;
+            };
+
+            const filteredEvents = React.useMemo(() => {
+                return processedEvents.filter(e => {
+                    if (allowedCourseCodes && !isSourceAllowed(e.sourceFile, e.type)) return false;
+                    return calendarVisibility[e.sourceFile] ?? true;
+                });
+            }, [processedEvents, calendarVisibility, allowedCourseCodes]);
+
+            const eventsWithConflicts = React.useMemo(() => detectConflicts(filteredEvents), [filteredEvents]);
+            const conflictCount = eventsWithConflicts.filter(e => e.hasConflict).length;
+            
+            const visibleSources = uniqueSources.filter(src => (!allowedCourseCodes || isSourceAllowed(src, sourceTypes[src])) && (calendarVisibility[src] ?? true));
+            const monthsToDisplay = [0, 1, 2].map(offset => new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
+
+            // Handlers
+            const handleFileUpload = (e) => {
+                const files = e.target.files; if (!files) return;
+                setIsLoading(true);
+                if (importType === 'COHORT') {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => { setCohortRules(parseCohortCSV(ev.target.result)); setIsLoading(false); };
+                    reader.readAsText(files[0]);
+                    return;
+                }
+                const readers = Array.from(files).map(file => new Promise(resolve => {
+                    const reader = new FileReader();
+                    const cleanName = file.name.replace(/\.(ics|txt|csv)$/i, '').replace(/(?:[_\s-]*new)+$/i, '').trim();
+                    reader.onload = (ev) => {
+                        const content = ev.target.result;
+                        if (file.name.toLowerCase().endsWith('.csv')) {
+                            resolve(parseCSV(content, cleanName, (importType === EventType.CLASS || importType === EventType.PRACTICAL) ? importType : EventType.PRACTICAL));
+                        } else {
+                            resolve(parseICS(content, cleanName, importType === 'AUTO' ? undefined : importType));
+                        }
+                    };
+                    reader.readAsText(file);
+                }));
+                Promise.all(readers).then(res => {
+                    const newEvents = res.flat();
+                    setEvents(prev => [...prev, ...newEvents]);
+                    if (newEvents.length > 0) setCurrentDate(new Date(newEvents[0].start.getFullYear(), newEvents[0].start.getMonth(), 1));
+                    setIsLoading(false);
+                });
+            };
+
+            const handleClear = () => {
+                setEvents([]); setCohortRules([]); setCalendarVisibility({}); setSelectedDegree(''); setSelectedYear('');
+                setExpandedCategories({ [EventType.LECTURE]: false, [EventType.PRACTICAL]: false, [EventType.CLASS]: false, [EventType.OTHER]: false });
+            };
+
+            const handleExport = () => {
+                const lines = events.map(e => {
+                    const title = JSON.stringify(e.title);
+                    const start = e.start.toISOString();
+                    const end = e.end.toISOString();
+                    const type = e.type;
+                    const source = JSON.stringify(e.sourceFile);
+                    const loc = JSON.stringify(e.location || '');
+                    const desc = JSON.stringify(e.description || '');
+                    return "  { id: '" + e.id + "', title: " + title + ", start: new Date('" + start + "'), end: new Date('" + end + "'), type: '" + type + "', sourceFile: " + source + ", location: " + loc + ", description: " + desc + " }";
+                });
+                const eventsStr = lines.join(',\n');
+                const rulesStr = JSON.stringify(cohortRules, null, 2);
+                const output = "// Replace contents of utils/sampleData.ts\nexport const SAMPLE_COHORT_RULES = " + rulesStr + ";\nexport const SAMPLE_EVENTS = [\n" + eventsStr + "\n];";
+                setExportCode(output);
+                setShowExportModal(true);
+            };
+
+            const toggleFilterCategory = (type) => {
+                const sources = groupedSources[type] || [];
+                const allowed = sources.filter(s => isSourceAllowed(s, type));
+                if (allowed.length === 0) return;
+                const visible = allowed.filter(s => calendarVisibility[s] !== false).length;
+                const shouldShow = visible === 0;
+                setCalendarVisibility(prev => {
+                    const next = { ...prev };
+                    allowed.forEach(s => next[s] = shouldShow);
+                    return next;
+                });
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-slate-50">
+                    <header className="bg-oxford-blue border-b border-oxford-accent px-4 py-3 flex-none flex items-center justify-between shadow-sm z-30 text-white">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white/10 text-white p-2 rounded-lg">🗓</div>
+                            <div>
+                                <h1 className="text-lg font-bold">Jennifer Watson | Schedule Calendar</h1>
+                                <p className="text-xs text-blue-200 uppercase">{isAdminMode ? 'Admin Dashboard' : 'Student View'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()-1, 1))} variant="ghost" className="text-white hover:bg-white/10 hover:text-white" size="sm">&lt;</Button>
+                            <span className="text-sm font-semibold text-white hidden md:inline">{currentDate.toLocaleDateString([], { month: 'short', year: 'numeric' })}</span>
+                            <Button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 1))} variant="ghost" className="text-white hover:bg-white/10 hover:text-white" size="sm">&gt;</Button>
+                            
+                            {isAdminMode ? (
+                                <>
+                                    <Button variant="ghost" size="sm" className="text-red-300 hover:text-red-100 hover:bg-white/10" onClick={handleClear}>Clear</Button>
+                                    <Button variant="secondary" size="sm" onClick={handleExport}>Export</Button>
+                                    <div className="flex items-center border border-white/20 rounded bg-white/10 px-2">
+                                        <select className="bg-transparent text-sm py-1 text-white outline-none" value={importType} onChange={e => setImportType(e.target.value)}>
+                                            <option value="AUTO" className="text-slate-900">Auto</option>
+                                            <option value={EventType.LECTURE} className="text-slate-900">Lecture</option>
+                                            <option value={EventType.PRACTICAL} className="text-slate-900">Practical</option>
+                                            <option value={EventType.CLASS} className="text-slate-900">Class</option>
+                                            <option value="COHORT" className="text-slate-900">Cohort</option>
+                                        </select>
+                                    </div>
+                                    <label className="bg-white text-oxford-blue px-3 py-1.5 rounded text-sm cursor-pointer hover:bg-blue-50 font-medium">
+                                        Upload <input type="file" multiple accept=".ics,.csv" onChange={handleFileUpload} className="hidden" />
+                                    </label>
+                                    <button onClick={() => {setIsAdminMode(false)}} className="text-blue-200 p-2 hover:text-white">Exit Admin</button>
+                                </>
+                            ) : (
+                                <button onClick={() => {setIsAdminMode(true)}} className="text-blue-300 p-2 hover:text-white">⚙</button>
+                            )}
+                        </div>
+                    </header>
+
+                    <div className="flex-1 flex overflow-hidden relative">
+                        {/* Filters Sidebar */}
+                        <aside className={`${mobileTab === 'filters' ? 'flex absolute inset-0 z-30' : 'hidden'} md:flex md:relative md:w-72 flex-col bg-white border-r border-slate-200 h-full`}>
+                            <div className="flex-1 overflow-y-auto flex flex-col">
+                                {cohortRules.length > 0 && (
+                                    <div className="p-4 border-b bg-slate-50">
+                                        <h2 className="text-xs font-bold text-oxford-blue uppercase mb-2">Student Filter</h2>
+                                        <select className="w-full text-xs p-2 border rounded mb-2 focus:ring-oxford-blue focus:border-oxford-blue" value={selectedDegree} onChange={e => setSelectedDegree(e.target.value)}>
+                                            <option value="">Select Degree...</option>
+                                            {degrees.map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                        <select className="w-full text-xs p-2 border rounded focus:ring-oxford-blue focus:border-oxford-blue" value={isYearRequired ? selectedYear : ''} onChange={e => setSelectedYear(e.target.value)} disabled={!selectedDegree || !isYearRequired}>
+                                            <option value="">{isYearRequired ? 'Select Year...' : 'N/A'}</option>
+                                            {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="p-4 space-y-2">
+                                    {Object.values(EventType).map(type => {
+                                        const files = groupedSources[type] || [];
+                                        if (files.length === 0) return null;
+                                        const allowed = files.filter(s => isSourceAllowed(s, type));
+                                        const isExpanded = expandedCategories[type];
+                                        const visibleCount = allowed.filter(s => calendarVisibility[s] !== false).length;
+                                        const isAll = visibleCount === allowed.length && allowed.length > 0;
+                                        const isNone = visibleCount === 0;
+                                        
+                                        return (
+                                            <div key={type} className={`border rounded bg-slate-50 ${allowed.length === 0 ? 'opacity-50' : ''}`}>
+                                                <div className="flex items-center justify-between p-3 bg-white">
+                                                    <label className="flex items-center gap-3 cursor-pointer">
+                                                        <div className={`w-4 h-4 border rounded flex items-center justify-center ${!isNone ? 'bg-oxford-blue border-oxford-blue' : 'bg-white'}`}>
+                                                            {!isNone && <span className="text-white text-xs">{!isAll ? '-' : '✓'}</span>}
+                                                        </div>
+                                                        <input type="checkbox" className="hidden" checked={!isNone} onChange={() => toggleFilterCategory(type)} disabled={allowed.length===0} />
+                                                        <span className="text-sm font-bold text-slate-800">{type}s</span>
+                                                    </label>
+                                                    <button onClick={() => setExpandedCategories(p => ({...p, [type]: !p[type]}))} className="text-slate-400">{isExpanded ? '▲' : '▼'}</button>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="p-2 border-t space-y-1">
+                                                        {files.map(src => {
+                                                            const allowedSrc = isSourceAllowed(src, type);
+                                                            return (
+                                                                <label key={src} className={`flex items-center gap-2 p-1 rounded hover:bg-white cursor-pointer ${!allowedSrc ? 'opacity-50' : ''}`}>
+                                                                    <input type="checkbox" checked={calendarVisibility[src] !== false} onChange={() => allowedSrc && setCalendarVisibility(p => ({...p, [src]: !p[src]}))} disabled={!allowedSrc} className="rounded text-oxford-blue focus:ring-oxford-blue" />
+                                                                    <span className="text-xs truncate text-slate-700">{src}</span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-auto p-4 border-t">
+                                    <div className="flex gap-2 text-center">
+                                        <div className="flex-1 border rounded p-2"><div className="text-xl font-bold text-slate-800">{eventsWithConflicts.length}</div><div className="text-xs uppercase text-slate-500">Events</div></div>
+                                        <div className="flex-1 border border-red-200 bg-red-50 rounded p-2"><div className="text-xl font-bold text-red-600">{conflictCount}</div><div className="text-xs uppercase text-red-400">Conflicts</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+
+                        {/* Main Schedule Area */}
+                        <main className={`${mobileTab === 'schedule' ? 'flex' : 'hidden'} md:flex flex-1 flex-col bg-slate-50 overflow-hidden relative`}>
+                            {isLoading && <div className="absolute inset-0 bg-white/80 z-50 flex items-center justify-center">Loading...</div>}
+                            {/* Desktop Grid */}
+                            <div className="hidden xl:block h-full overflow-x-auto p-6">
+                                <div className="grid grid-cols-3 gap-6 h-full min-w-[1000px]">
+                                    {monthsToDisplay.map((d, i) => <CalendarMonth key={i} year={d.getFullYear()} month={d.getMonth()} events={eventsWithConflicts} onDayClick={(date, evs) => setSelectedDay({date, events: evs})} selectedDate={selectedDay?.date} />)}
+                                </div>
+                            </div>
+                            {/* Mobile/Tablet List */}
+                            <div className="block xl:hidden h-full">
+                                <AgendaView events={eventsWithConflicts} onEventClick={(e) => setSelectedDay({ date: e.start, events: [e] })} />
+                            </div>
+                        </main>
+
+                        {/* Summary Sidebar */}
+                        <aside className={`${mobileTab === 'summary' ? 'flex absolute inset-0 z-30' : 'hidden'} md:flex md:relative md:w-64 flex-col bg-white border-l border-slate-200`}>
+                            <SummaryPane visibleSources={visibleSources} sourceTypes={sourceTypes} />
+                        </aside>
+                    </div>
+
+                    {/* Mobile Nav */}
+                    <div className="md:hidden bg-white border-t flex justify-around p-2">
+                        <button onClick={() => setMobileTab('filters')} className={`p-2 text-xs ${mobileTab==='filters'?'text-oxford-blue':'text-slate-400'}`}>Filters</button>
+                        <button onClick={() => setMobileTab('schedule')} className={`p-2 text-xs ${mobileTab==='schedule'?'text-oxford-blue':'text-slate-400'}`}>Schedule</button>
+                        <button onClick={() => setMobileTab('summary')} className={`p-2 text-xs ${mobileTab==='summary'?'text-oxford-blue':'text-slate-400'}`}>Summary</button>
+                    </div>
+
+                    {/* Conflict Banner Mobile */}
+                    {conflictCount > 0 && <div className="md:hidden fixed bottom-16 left-4 right-4 bg-red-600 text-white p-3 rounded shadow-lg text-center text-sm font-bold" onClick={() => setMobileTab('schedule')}>{conflictCount} Conflicts Detected</div>}
+
+                    <EventModal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} date={selectedDay?.date} events={selectedDay?.events || []} />
+                    
+                    {showExportModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-xl w-full max-w-2xl h-[80vh] flex flex-col">
+                                <div className="p-4 border-b font-bold">Export Data</div>
+                                <textarea className="flex-1 bg-slate-900 text-slate-50 p-4 font-mono text-xs resize-none" readOnly value={exportCode} onClick={e => e.target.select()} />
+                                <div className="p-4 border-t flex justify-end gap-2"><Button onClick={() => setShowExportModal(false)}>Close</Button></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@ name: Deploy Vite site to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main]           # Set to your default branch if it is not main
 
 jobs:
   build-deploy:
@@ -21,8 +21,9 @@ jobs:
       - name: Build site
         run: npm run build
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          force_orphan: true   # Ensures a clean gh-pages branch with only built assets

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Anomaly } from '../utils/csvParser';
 import { CalendarEvent, EventType } from '../types';
 import { Button } from './Button';
-import { TERM_START_DATE } from '../utils/dateUtils';
+import { getTermStartDate } from '../utils/dateUtils';
 
 interface AnomalyModalProps {
   isOpen: boolean;
@@ -161,8 +161,9 @@ export const AnomalyModal: React.FC<AnomalyModalProps> = ({
       if (!row.enabled) return;
       const [sh, sm] = row.startTime.split(':').map(Number);
       const [eh, em] = row.endTime.split(':').map(Number);
-      const weekStart = new Date(TERM_START_DATE);
-      weekStart.setDate(TERM_START_DATE.getDate() + (row.weekNum - 1) * 7);
+      const termStartDate = getTermStartDate();
+      const weekStart = new Date(termStartDate);
+      weekStart.setDate(termStartDate.getDate() + (row.weekNum - 1) * 7);
       const eventDate = new Date(weekStart);
       const offset = row.day === 0 ? 6 : row.day - 1;
       eventDate.setDate(weekStart.getDate() + offset);
@@ -202,7 +203,7 @@ export const AnomalyModal: React.FC<AnomalyModalProps> = ({
                 Automatic processing failed. Use the data below to manually fill the form.
               </p>
             </div>
-            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-white dark:bg-slate-900 rounded-full shadow-sm border border-slate-200 dark:border-slate-700">✕</button>
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-white dark:bg-slate-900 rounded-full shadow-sm border border-slate-200 dark:border-slate-700">âœ•</button>
           </div>
           
           <div className="space-y-3">

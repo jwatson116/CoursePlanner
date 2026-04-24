@@ -1,6 +1,6 @@
 
 import { CalendarEvent, EventType } from '../types';
-import { TERM_START_DATE } from './dateUtils';
+import { getTermStartDate } from './dateUtils';
 
 const DAY_MAP: Record<string, number> = {
   'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6
@@ -173,9 +173,9 @@ export const parseCSV = (content: string, fileName: string, eventType: EventType
     const staticDescription = `${descriptionRaw}\n${weeksRaw}`;
 
     weekNums.forEach(weekNum => {
-      // TERM_START_DATE is Week 1 Monday
-      const weekStartDate = new Date(TERM_START_DATE);
-      weekStartDate.setDate(TERM_START_DATE.getDate() + (weekNum - 1) * 7);
+      const termStartDate = getTermStartDate();
+      const weekStartDate = new Date(termStartDate);
+      weekStartDate.setDate(termStartDate.getDate() + (weekNum - 1) * 7);
       
       const eventDate = new Date(weekStartDate);
       eventDate.setDate(weekStartDate.getDate() + dayOffset);

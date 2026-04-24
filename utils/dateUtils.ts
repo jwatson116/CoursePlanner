@@ -6,7 +6,27 @@ export const MONTH_NAMES = [
 
 export const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export const TERM_START_DATE = new Date(2026, 0, 19); // January 19, 2026
+const DEFAULT_TERM_START_DATE = new Date(2026, 0, 19); // January 19, 2026
+let activeTermStartDate = new Date(DEFAULT_TERM_START_DATE);
+
+export const TERM_START_DATE = DEFAULT_TERM_START_DATE;
+
+export const getTermStartDate = (): Date => new Date(activeTermStartDate);
+
+export const setTermStartDate = (value: Date | string): Date => {
+  const next = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(next.getTime())) {
+    activeTermStartDate = new Date(DEFAULT_TERM_START_DATE);
+  } else {
+    activeTermStartDate = new Date(next.getFullYear(), next.getMonth(), next.getDate());
+  }
+  return getTermStartDate();
+};
+
+export const resetTermStartDate = (): Date => {
+  activeTermStartDate = new Date(DEFAULT_TERM_START_DATE);
+  return getTermStartDate();
+};
 
 export const getDaysInMonth = (year: number, month: number): number => {
   return new Date(year, month + 1, 0).getDate();
@@ -92,7 +112,8 @@ export const formatDateFull = (date: Date): string => {
 };
 
 export const getTermWeek = (date: Date): number => {
-  const week1Start = new Date(2026, 0, 18); // Sunday Jan 18
+  const week1Start = getTermStartDate();
+  week1Start.setDate(week1Start.getDate() - 1);
   const diffTime = date.getTime() - week1Start.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   return Math.floor(diffDays / 7) + 1;

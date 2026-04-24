@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { CalendarMonth } from './components/CalendarMonth';
 import { CalendarWeek } from './components/CalendarWeek';
@@ -13,7 +12,8 @@ import { parseCSV, Anomaly, CSVParseResult } from './utils/csvParser';
 import { parseMathsCSV } from './utils/mathsParser';
 import { parseCohortCSV } from './utils/cohortParser';
 import { SAMPLE_EVENTS, SAMPLE_COHORT_RULES, SAMPLE_CHANGE_LOG } from './utils/sampleData';
-import { addDays, TERM_START_DATE, isSameDay } from './utils/dateUtils';
+import { addDays, getTermStartDate, isSameDay, resetTermStartDate, setTermStartDate } from './utils/dateUtils';
+import { fetchPublishedPlanner, normalizePlannerSnapshot } from './services/plannerData';
 
 // Explicit overrides for shortnames that algorithmic matching might miss
 const SHORTNAME_OVERRIDES: Record<string, string> = {
@@ -26,7 +26,10 @@ const SHORTNAME_OVERRIDES: Record<string, string> = {
 };
 
 const App: React.FC = () => {
-  const [currentDate, setCurrentDate] = useState(new Date(TERM_START_DATE.getFullYear(), TERM_START_DATE.getMonth(), 1));
+  const [currentDate, setCurrentDate] = useState(() => {
+    const initialTermStartDate = getTermStartDate();
+    return new Date(initialTermStartDate.getFullYear(), initialTermStartDate.getMonth(), 1);
+  });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<'month' | 'week'>(() => {
@@ -36,8 +39,7 @@ const App: React.FC = () => {
     }
     return 'month';
   });
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [importType, setImportType] = useState<EventType | 'COHORT'>('COHORT');
+  const [importType] = useState<EventType | 'COHORT'>('COHORT');
   const [calendarVisibility, setCalendarVisibility] = useState<Record<string, boolean>>(() => {
     if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('scholarSync_visibility');
@@ -82,20 +84,69 @@ const App: React.FC = () => {
     }
     return null;
   });
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
   // Anomaly Handling State
   const [anomaliesQueue, setAnomaliesQueue] = useState<Anomaly[]>([]);
   const [currentAnomalyIndex, setCurrentAnomalyIndex] = useState(0);
 
   useEffect(() => {
-    // Sanitize sample events to remove old 'Resolved Anomaly' markers from descriptions
-    const cleanEvents = SAMPLE_EVENTS.map(e => ({
-        ...e,
-        description: e.description ? e.description.replace(' (Resolved Anomaly)', '') : ''
-    }));
-    setEvents(cleanEvents);
-    setCohortRules(SAMPLE_COHORT_RULES);
-    setChangeLogs(SAMPLE_CHANGE_LOG);
+    let isMounted = true;
+
+    const applyFallbackSnapshot = () => {
+      const cleanEvents = SAMPLE_EVENTS.map((event) => ({
+        ...event,
+        description: event.description ? event.description.replace(' (Resolved Anomaly)', '') : '',
+      }));
+      const termStartDate = resetTermStartDate();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setEvents(cleanEvents);
+      setCohortRules(SAMPLE_COHORT_RULES);
+      setChangeLogs(SAMPLE_CHANGE_LOG);
+      setCurrentDate(new Date(termStartDate.getFullYear(), termStartDate.getMonth(), 1));
+      setLastUpdatedAt(null);
+    };
+
+    const loadPublishedData = async () => {
+      setIsLoading(true);
+      try {
+        const snapshot = await fetchPublishedPlanner();
+        if (!snapshot) {
+          applyFallbackSnapshot();
+          return;
+        }
+
+        const normalized = normalizePlannerSnapshot(snapshot);
+        const termStartDate = setTermStartDate(snapshot.termStartDate);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setEvents(normalized.events);
+        setCohortRules(snapshot.cohortRules);
+        setChangeLogs(snapshot.changeLogs);
+        setCurrentDate(new Date(termStartDate.getFullYear(), termStartDate.getMonth(), 1));
+        setLastUpdatedAt(snapshot.updatedAt);
+      } catch (error) {
+        console.error(error);
+        applyFallbackSnapshot();
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadPublishedData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -387,7 +438,7 @@ const App: React.FC = () => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target?.result as string);
-            // Try ISO-8859-1 for CSV/TXT which might be Excel encoded (fixes ö display issues)
+            // Try ISO-8859-1 for CSV/TXT which might be Excel encoded (fixes Ã¶ display issues)
             // Keep default UTF-8 for ICS
             if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) {
                 reader.readAsText(file, 'ISO-8859-1');
@@ -753,12 +804,12 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex-none flex flex-col md:flex-row md:items-center justify-between gap-3 z-50 shadow-sm transition-colors">
         <div className="flex items-center gap-3">
-          <div onDoubleClick={() => setIsAdminMode(prev => !prev)} className="bg-[#002147] text-white p-2 rounded-lg dark:bg-indigo-600 flex-none cursor-default select-none active:scale-95 transition-transform">
+          <div className="bg-[#002147] text-white p-2 rounded-lg dark:bg-indigo-600 flex-none select-none">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-[#002147] dark:text-white leading-tight truncate">Interactive Course Planner</h1>
-            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">{isAdminMode ? 'Admin Portal' : 'Student Portal'}</p>
+            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">Student Planner</p>
           </div>
         </div>
         <div className={`${mobileTab === 'schedule' ? 'flex' : 'hidden'} md:flex items-center gap-2 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg justify-between md:justify-start flex-none`}>
@@ -782,23 +833,21 @@ const App: React.FC = () => {
             )}
           </button>
           <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 transition-colors">{isDarkMode ? <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0z" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998z" /></svg>}</button>
-          {isAdminMode && (
-            <div className="flex items-center gap-1 md:gap-2">
-              <select value={importType} onChange={(e) => setImportType(e.target.value as any)} className="text-[10px] font-bold p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="COHORT">Cohort</option>
-                <option value={EventType.LECTURE}>Lectures</option>
-                <option value={EventType.PRACTICAL}>Practicals</option>
-                <option value={EventType.CLASS}>Classes</option>
-                <option value={EventType.MATHS}>Maths</option>
-              </select>
-              <label className="cursor-pointer"><div className="inline-flex items-center justify-center rounded-lg font-medium transition-colors bg-[#002147] text-white hover:bg-[#003c7d] px-2 py-1.5 text-[10px] shadow-sm">Upload</div><input type="file" multiple accept=".ics,.csv,.txt" onChange={handleFileUpload} className="hidden" /></label>
-              <Button variant="ghost" size="sm" onClick={handleClearData} className="text-red-500 font-bold px-2 h-8 text-[10px]">Reset</Button>
-              <Button variant="secondary" size="sm" onClick={handleExportData} className="font-bold px-2 h-8 text-[10px]">Export</Button>
+          {lastUpdatedAt && (
+            <div className="hidden md:flex items-center rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Updated {new Date(lastUpdatedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
           )}
         </div>
       </header>
       <div className="flex-1 flex overflow-hidden relative">
+        {isLoading && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-6 py-4 shadow-xl">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-100">Loading published planner data...</p>
+            </div>
+          </div>
+        )}
         <aside className={`${mobileTab === 'filters' ? 'flex w-full absolute inset-0 z-40 bg-white dark:bg-slate-800' : 'hidden'} md:flex md:relative md:w-52 lg:w-64 xl:w-72 flex-col border-r border-slate-200 dark:border-slate-700 overflow-hidden`}>{renderFiltersContent()}</aside>
         <main className={`flex-1 flex flex-col overflow-hidden ${mobileTab !== 'schedule' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 overflow-auto p-4 md:p-6 bg-slate-100/30 dark:bg-slate-900/50">
@@ -828,7 +877,7 @@ const App: React.FC = () => {
           <button onClick={() => setMobileTab('summary')} className={`flex flex-col items-center p-2 text-[10px] font-bold transition-colors ${mobileTab === 'summary' ? 'text-indigo-600' : 'text-slate-400'}`}>Summary</button>
       </div>
       <EventModal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} date={selectedDay || null} events={selectedDateEvents} onRemoveSource={handleRemoveSource} sourceUrls={sourceToUrl} />
-      <ChangeLogModal isOpen={isChangeLogOpen} onClose={() => setIsChangeLogOpen(false)} logs={changeLogs} isAdminMode={isAdminMode} onEdit={handleEditLog} onDelete={(id) => setChangeLogs(prev => prev.filter(l => l.id !== id))} onSave={handleSaveLog} logFormDesc={logFormDesc} setLogFormDesc={setLogFormDesc} logFormDate={logFormDate} setLogFormDate={setLogFormDate} editingLogId={editingLogId} onCancelEdit={() => setEditingLogId(null)} />
+      <ChangeLogModal isOpen={isChangeLogOpen} onClose={() => setIsChangeLogOpen(false)} logs={changeLogs} logFormDesc="" setLogFormDesc={() => {}} logFormDate="" setLogFormDate={() => {}} editingLogId={null} />
       
       {/* Anomaly Resolution Modal */}
       {anomaliesQueue.length > 0 && (
@@ -842,29 +891,6 @@ const App: React.FC = () => {
           />
       )}
 
-      {showExportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-              <h3 className="font-bold text-slate-700 dark:text-slate-200">Export Data</h3>
-              <button onClick={() => setShowExportModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 p-0 overflow-hidden relative">
-               <textarea 
-                 readOnly 
-                 value={exportCode} 
-                 className="w-full h-full p-4 font-mono text-xs bg-slate-900 text-green-400 resize-none outline-none"
-                 onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-               />
-            </div>
-            <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-end">
-               <Button onClick={() => setShowExportModal(false)}>Close</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

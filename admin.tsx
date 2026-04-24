@@ -1,6 +1,23 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+
+const AdminBootstrap: React.FC = () => {
+  useEffect(() => {
+    const enableAdminMode = () => {
+      const calendarBadge = document.querySelector('header .bg-\\[\\#002147\\]') as HTMLElement | null;
+      if (calendarBadge) {
+        calendarBadge.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        return;
+      }
+      requestAnimationFrame(enableAdminMode);
+    };
+
+    enableAdminMode();
+  }, []);
+
+  return <App />;
+};
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -10,6 +27,6 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App portalMode="admin" />
+    <AdminBootstrap />
   </React.StrictMode>
 );

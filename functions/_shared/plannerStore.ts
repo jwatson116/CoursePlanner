@@ -24,7 +24,8 @@ const isSnapshot = (value: JsonValue | null): value is PlannerSnapshot => {
     Array.isArray(value.changeLogs) &&
     Array.isArray(value.cohortRules) &&
     Array.isArray(value.events) &&
-    typeof value.updatedAt === 'string'
+    typeof value.updatedAt === 'string' &&
+    (value.studentAccessEnabled === undefined || typeof value.studentAccessEnabled === 'boolean')
   );
 };
 

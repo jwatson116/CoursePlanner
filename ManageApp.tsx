@@ -25,6 +25,7 @@ export const ManageApp: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [cohortRules, setCohortRules] = useState<CohortRule[]>([]);
   const [changeLogs, setChangeLogs] = useState<ChangeLogEntry[]>([]);
+  const [studentAccessEnabled, setStudentAccessEnabled] = useState(true);
   const [termStartDate, setTermStartDateState] = useState<string>(() => toIsoDate(resetTermStartDate()));
   const [manageToken, setManageToken] = useState('');
   const [importType, setImportType] = useState<EventType | 'COHORT'>('COHORT');
@@ -62,6 +63,7 @@ export const ManageApp: React.FC = () => {
         setCohortRules(snapshot.cohortRules);
         setChangeLogs(snapshot.changeLogs);
         setTermStartDateState(toIsoDate(nextStart));
+        setStudentAccessEnabled(normalized.studentAccessEnabled);
       } catch (error) {
         console.error(error);
         const fallbackStart = resetTermStartDate();
@@ -70,6 +72,7 @@ export const ManageApp: React.FC = () => {
         setCohortRules(SAMPLE_COHORT_RULES);
         setChangeLogs(SAMPLE_CHANGE_LOG);
         setTermStartDateState(toIsoDate(fallbackStart));
+        setStudentAccessEnabled(true);
         setStatusTone('error');
         setStatusMessage('Could not load published data, so the editor opened with the bundled fallback data.');
       } finally {
@@ -248,6 +251,7 @@ export const ManageApp: React.FC = () => {
           cohortRules,
           events: serializeEvents(events),
           updatedAt: new Date().toISOString(),
+          studentAccessEnabled,
         },
         manageToken.trim()
       );
@@ -317,6 +321,33 @@ export const ManageApp: React.FC = () => {
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#002147] dark:border-slate-700 dark:bg-slate-800"
                 />
               </label>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Student page visibility</h3>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    Turn the public planner on during term and off when the tool should be hidden from students.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStudentAccessEnabled((current) => !current)}
+                  className={`inline-flex items-center gap-3 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    studentAccessEnabled
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+                      : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      studentAccessEnabled ? 'bg-emerald-500' : 'bg-slate-500'
+                    }`}
+                  />
+                  {studentAccessEnabled ? 'Student page is ON' : 'Student page is OFF'}
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">

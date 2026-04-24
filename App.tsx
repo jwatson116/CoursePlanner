@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { CalendarMonth } from './components/CalendarMonth';
 import { CalendarWeek } from './components/CalendarWeek';
@@ -85,6 +86,7 @@ const App: React.FC = () => {
     return null;
   });
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [studentAccessEnabled, setStudentAccessEnabled] = useState(true);
 
   // Anomaly Handling State
   const [anomaliesQueue, setAnomaliesQueue] = useState<Anomaly[]>([]);
@@ -132,6 +134,7 @@ const App: React.FC = () => {
         setChangeLogs(snapshot.changeLogs);
         setCurrentDate(new Date(termStartDate.getFullYear(), termStartDate.getMonth(), 1));
         setLastUpdatedAt(snapshot.updatedAt);
+        setStudentAccessEnabled(normalized.studentAccessEnabled);
       } catch (error) {
         console.error(error);
         applyFallbackSnapshot();
@@ -438,7 +441,7 @@ const App: React.FC = () => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target?.result as string);
-            // Try ISO-8859-1 for CSV/TXT which might be Excel encoded (fixes Ã¶ display issues)
+            // Try ISO-8859-1 for CSV/TXT which might be Excel encoded (fixes ö display issues)
             // Keep default UTF-8 for ICS
             if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) {
                 reader.readAsText(file, 'ISO-8859-1');
@@ -799,6 +802,25 @@ const App: React.FC = () => {
       </div>
     </>
   );
+
+  if (!isLoading && !studentAccessEnabled) {
+    return (
+      <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <div className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Course Planner</p>
+          <h1 className="mt-4 text-3xl font-bold text-[#002147] dark:text-white">The planner is currently unavailable</h1>
+          <p className="mt-4 text-base text-slate-600 dark:text-slate-300">
+            This tool is switched off at the moment. Please check back when teaching resumes or ask your course team when it will reopen.
+          </p>
+          {lastUpdatedAt && (
+            <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">
+              Last updated {new Date(lastUpdatedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">

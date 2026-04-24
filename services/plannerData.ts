@@ -9,6 +9,7 @@ export interface PlannerConfig {
   termStartDate: string;
   changeLogs: ChangeLogEntry[];
   updatedAt: string;
+  studentAccessEnabled?: boolean;
 }
 
 export interface PlannerSnapshot extends PlannerConfig {
@@ -33,6 +34,7 @@ export const deserializeEvents = (events: StoredCalendarEvent[]): CalendarEvent[
 export const normalizePlannerSnapshot = (snapshot: PlannerSnapshot) => ({
   ...snapshot,
   events: deserializeEvents(snapshot.events),
+  studentAccessEnabled: snapshot.studentAccessEnabled !== false,
 });
 
 export const fetchPublishedPlanner = async (): Promise<PlannerSnapshot | null> => {

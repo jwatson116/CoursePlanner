@@ -7,6 +7,7 @@ import { Button } from './components/Button';
 import { SummaryPane } from './components/SummaryPane';
 import { ChangeLogModal } from './components/ChangeLogModal';
 import { AnomalyModal } from './components/AnomalyModal';
+import { DepartmentBrand } from './components/DepartmentBrand';
 import { CalendarEvent, EventType, CohortRule, ChangeLogEntry } from './types';
 import { parseICS, detectConflicts } from './utils/icsParser';
 import { parseCSV, Anomaly, CSVParseResult } from './utils/csvParser';
@@ -807,6 +808,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <DepartmentBrand className="mx-auto w-fit" imageClassName="h-16 md:h-20" />
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Course Planner</p>
           <h1 className="mt-4 text-3xl font-bold text-[#002147] dark:text-white">The planner is currently unavailable</h1>
           <p className="mt-4 text-base text-slate-600 dark:text-slate-300">
@@ -826,12 +828,10 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex-none flex flex-col md:flex-row md:items-center justify-between gap-3 z-50 shadow-sm transition-colors">
         <div className="flex items-center gap-3">
-          <div className="bg-[#002147] text-white p-2 rounded-lg dark:bg-indigo-600 flex-none select-none">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
-          </div>
+          <DepartmentBrand className="flex-none" imageClassName="h-12 md:h-14" />
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-[#002147] dark:text-white leading-tight truncate">Interactive Course Planner</h1>
-            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">Student Planner</p>
+            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">Department of Computer Science Student Planner</p>
           </div>
         </div>
         <div className={`${mobileTab === 'schedule' ? 'flex' : 'hidden'} md:flex items-center gap-2 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg justify-between md:justify-start flex-none`}>

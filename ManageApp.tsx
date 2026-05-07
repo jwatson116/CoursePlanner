@@ -388,7 +388,7 @@ export const ManageApp: React.FC = () => {
                     <a
                       href="https://courses.cs.ox.ac.uk/report/customsql/view.php?id=133"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener"
                       className="text-[#002147] underline decoration-slate-300 underline-offset-2 hover:text-[#003c7d] dark:text-indigo-300 dark:decoration-slate-600"
                     >
                       this report
@@ -405,7 +405,7 @@ export const ManageApp: React.FC = () => {
                     <a
                       href="https://courses.cs.ox.ac.uk/blocks/configurable_reports/viewreport.php?id=254&courseid=743"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener"
                       className="text-[#002147] underline decoration-slate-300 underline-offset-2 hover:text-[#003c7d] dark:text-indigo-300 dark:decoration-slate-600"
                     >
                       this report
@@ -418,7 +418,7 @@ export const ManageApp: React.FC = () => {
                     <a
                       href="https://courses.cs.ox.ac.uk/blocks/configurable_reports/viewreport.php?id=252&courseid=743"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener"
                       className="text-[#002147] underline decoration-slate-300 underline-offset-2 hover:text-[#003c7d] dark:text-indigo-300 dark:decoration-slate-600"
                     >
                       this report

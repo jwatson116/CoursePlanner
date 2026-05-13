@@ -23,7 +23,7 @@ const toIsoDate = (value: Date) => {
 };
 
 const sourceReports = {
-  cohortRules: 'https://courses.cs.ox.ac.uk/report/customsql/view.php?id=133',
+  cohortRules: 'https://courses.cs.ox.ac.uk/pluginfile.php/1/report_customsql/download/133?timestamp=1778677504&dataformat=csv',
   classes: 'https://courses.cs.ox.ac.uk/blocks/configurable_reports/viewreport.php?id=254&courseid=743',
   practicals: 'https://courses.cs.ox.ac.uk/blocks/configurable_reports/viewreport.php?id=252&courseid=743',
 };

@@ -28,6 +28,75 @@ const sourceReports = {
   practicals: 'https://courses.cs.ox.ac.uk/blocks/configurable_reports/viewreport.php?id=252&courseid=743&download=1&format=csv',
 };
 
+const getEventSignature = (event: CalendarEvent) =>
+  [
+    event.title.trim().toLowerCase(),
+    event.start.toISOString(),
+    event.end.toISOString(),
+    (event.location || '').trim().toLowerCase(),
+  ].join('|');
+
+const getEventCourse = (event: CalendarEvent) => event.title.split(' - ')[0]?.trim() || event.title.trim();
+
+const formatChangeList = (items: string[]) => {
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+};
+
+const describeScheduleChanges = (eventType: EventType, previousEvents: CalendarEvent[], nextEvents: CalendarEvent[]) => {
+  const typeLabel = eventType === EventType.CLASS ? 'class' : 'practical';
+  const typeLabelPlural = eventType === EventType.CLASS ? 'classes' : 'practicals';
+  const previousSignatures = new Set(previousEvents.map(getEventSignature));
+  const nextSignatures = new Set(nextEvents.map(getEventSignature));
+
+  const addedEvents = nextEvents.filter((event) => !previousSignatures.has(getEventSignature(event)));
+  const removedEvents = previousEvents.filter((event) => !nextSignatures.has(getEventSignature(event)));
+  const changedCount = addedEvents.length + removedEvents.length;
+
+  if (changedCount === 0) {
+    return '';
+  }
+
+  if (changedCount > 12) {
+    return `Major ${typeLabelPlural} scheduling changes.`;
+  }
+
+  const addedCourses = Array.from(new Set(addedEvents.map(getEventCourse))).sort();
+  const removedCourses = Array.from(new Set(removedEvents.map(getEventCourse))).sort();
+  const parts: string[] = [];
+
+  if (addedCourses.length > 0 && removedCourses.length > 0) {
+    const changedCourses = addedCourses.filter((course) => removedCourses.includes(course));
+    if (changedCourses.length > 0) {
+      parts.push(`Updated ${typeLabel} scheduling for ${formatChangeList(changedCourses.slice(0, 3))}`);
+    }
+  }
+
+  const addedOnly = addedCourses.filter((course) => !removedCourses.includes(course));
+  const removedOnly = removedCourses.filter((course) => !addedCourses.includes(course));
+
+  if (addedOnly.length > 0) {
+    parts.push(`Added ${typeLabel} scheduling for ${formatChangeList(addedOnly.slice(0, 3))}`);
+  }
+
+  if (removedOnly.length > 0) {
+    parts.push(`Removed ${typeLabel} scheduling for ${formatChangeList(removedOnly.slice(0, 3))}`);
+  }
+
+  if (parts.length === 0) {
+    return `Updated ${typeLabelPlural} scheduling.`;
+  }
+
+  return `${parts.join('. ')}.`;
+};
+
 export const ManageApp: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [cohortRules, setCohortRules] = useState<CohortRule[]>([]);
@@ -194,6 +263,14 @@ export const ManageApp: React.FC = () => {
 
     const allEvents = results.flatMap((result) => result.events);
     const allAnomalies = results.flatMap((result) => result.anomalies);
+    const changeLogSuggestion =
+      importType === EventType.CLASS || importType === EventType.PRACTICAL
+        ? describeScheduleChanges(
+            importType,
+            events.filter((existingEvent) => existingEvent.type === importType),
+            allEvents
+          )
+        : '';
 
     setEvents((previousEvents) => {
       let filteredPrevious = previousEvents;
@@ -217,6 +294,12 @@ export const ManageApp: React.FC = () => {
       setStatus(`Loaded files with ${allAnomalies.length} anomalies to review.`, 'neutral');
     } else {
       setStatus(`Loaded ${allEvents.length} events from ${fileList.length} file(s).`, 'success');
+    }
+
+    if (changeLogSuggestion) {
+      setEditingLogId(null);
+      setLogFormDate(toIsoDate(new Date()));
+      setLogFormDesc(changeLogSuggestion);
     }
 
     event.target.value = '';

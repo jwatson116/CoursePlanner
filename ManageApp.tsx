@@ -380,6 +380,27 @@ export const ManageApp: React.FC = () => {
     }
   };
 
+  const handleClearAllData = () => {
+    const confirmed = window.confirm(
+      'Clear all published planner data in this editor? This will remove all events, cohort rules, and change-log entries. You must publish afterwards for the student site to change.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setEvents([]);
+    setCohortRules([]);
+    setChangeLogs([]);
+    setAnomaliesQueue([]);
+    setCurrentAnomalyIndex(0);
+    setEditingLogId(null);
+    setLogFormDate(toIsoDate(new Date()));
+    setLogFormDesc('');
+    setStatusTone('success');
+    setStatusMessage('All planner data has been cleared in the editor. Upload the new term files, then publish.');
+  };
+
   const statusStyles = {
     neutral: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200',
     success: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200',
@@ -538,6 +559,20 @@ export const ManageApp: React.FC = () => {
                     .
                   </li>
                 </ul>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-red-800 dark:text-red-200">Start a new term</h3>
+                  <p className="mt-1 text-sm text-red-700 dark:text-red-300">
+                    Clear all timetable events, cohort rules, and change-log entries from the editor. This does not change the student site until you publish.
+                  </p>
+                </div>
+                <Button variant="ghost" onClick={handleClearAllData}>
+                  Clear all data
+                </Button>
               </div>
             </div>
 

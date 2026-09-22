@@ -14,3 +14,5 @@ Prerequisite: Node.js
 
 - No API key is required for the current version of this app.
 - Uploaded data stays in the browser until you export or replace it.
+
+Cloudflare deployment check

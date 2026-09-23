@@ -24,8 +24,8 @@ const SHORTNAME_OVERRIDES: Record<string, string> = {
   "cm": "Computational Medicine",
   "contmath": "Continuous Mathematics",
   "contmaths": "Continuous Mathematics",
-  "functionalprog": "Functional Programming"
-  "combinatorialopt" : "Combinatorial Optimisation"
+  "functionalprog": "Functional Programming",
+  "combinatorialopt" : "Combinatorial Optimisation",
   "gmod" : "Geometric Modelling"
   // Add other known specific shortnames here if needed
 };

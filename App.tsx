@@ -429,7 +429,7 @@ const App: React.FC = () => {
   const isSourceDependenciesMet = (source: string) => {
     const parts = source.split(' - ');
     if (parts.length < 2) return true;
-    return calendarVisibility[parts[0]] !== false;
+    return calendarVisibility[parts[0]] === true;
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {

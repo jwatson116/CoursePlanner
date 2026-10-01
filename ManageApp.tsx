@@ -115,6 +115,7 @@ export const ManageApp: React.FC = () => {
   const [logFormDesc, setLogFormDesc] = useState('');
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [copiedSourceReport, setCopiedSourceReport] = useState<string | null>(null);
+  const [clearType, setClearType] = useState<EventType | 'COHORT' | 'CHANGE_LOG'>(EventType.CLASS);
 
   useEffect(() => {
     let isMounted = true;
@@ -401,6 +402,43 @@ export const ManageApp: React.FC = () => {
     setStatusMessage('All planner data has been cleared in the editor. Upload the new term files, then publish.');
   };
 
+  const clearableData = [
+    { value: 'COHORT' as const, label: 'Cohort rules', count: cohortRules.length },
+    { value: EventType.LECTURE, label: 'Lectures', count: summary.lectures },
+    { value: EventType.PRACTICAL, label: 'Practicals', count: summary.practicals },
+    { value: EventType.CLASS, label: 'Classes', count: summary.classes },
+    { value: EventType.MATHS, label: 'Maths lectures', count: summary.maths },
+    { value: 'CHANGE_LOG' as const, label: 'Change-log entries', count: changeLogs.length },
+  ];
+
+  const handleClearSelectedData = () => {
+    const selected = clearableData.find((item) => item.value === clearType);
+    if (!selected || selected.count === 0) {
+      setStatus(`There are no ${selected?.label.toLowerCase() ?? 'selected items'} to clear.`, 'neutral');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear ${selected.count} ${selected.label.toLowerCase()} from this editor? The student site changes only after you publish.`
+    );
+    if (!confirmed) return;
+
+    if (clearType === 'COHORT') {
+      setCohortRules([]);
+    } else if (clearType === 'CHANGE_LOG') {
+      setChangeLogs([]);
+      setEditingLogId(null);
+      setLogFormDate(toIsoDate(new Date()));
+      setLogFormDesc('');
+    } else {
+      setEvents((previousEvents) => previousEvents.filter((item) => item.type !== clearType));
+      setAnomaliesQueue([]);
+      setCurrentAnomalyIndex(0);
+    }
+
+    setStatus(`Cleared ${selected.label.toLowerCase()} from the editor. Publish to update the student site.`, 'success');
+  };
+
   const statusStyles = {
     neutral: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200',
     success: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200',
@@ -573,6 +611,21 @@ export const ManageApp: React.FC = () => {
                 <Button variant="ghost" onClick={handleClearAllData}>
                   Clear all data
                 </Button>
+              </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-red-200 pt-4 dark:border-red-900/50 md:flex-row md:items-end">
+                <label className="flex-1">
+                  <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-red-800 dark:text-red-200">Clear one data type</span>
+                  <select
+                    value={clearType}
+                    onChange={(event) => setClearType(event.target.value as EventType | 'COHORT' | 'CHANGE_LOG')}
+                    className="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-red-500 dark:border-red-900/60 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    {clearableData.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label} ({item.count})</option>
+                    ))}
+                  </select>
+                </label>
+                <Button variant="ghost" onClick={handleClearSelectedData}>Clear selected data</Button>
               </div>
             </div>
 
